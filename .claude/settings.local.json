@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip list *)",
+      "Bash(Select-String -Pattern \"openpyxl|matplotlib|pandas\")",
+      "PowerShell(python --version 2>&1; python3 --version 2>&1)",
+      "PowerShell(gh *)"
+    ]
+  }
+}

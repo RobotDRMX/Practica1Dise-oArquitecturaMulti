@@ -1,0 +1,43 @@
+Tabla Origen,Campo Origen,Tabla Destino,Campo Destino,Tipo Dato Destino,Regla de Transformación / Limpieza (ETL)
+raw_ecommerce,InvoiceDate,dim_fecha,id_fecha_sk,SERIAL (INT),Clave subrogada autogenerada por secuencia. Guardar referencia del timestamp original.
+raw_ecommerce,InvoiceDate,dim_fecha,fecha_completa,TIMESTAMP,"Parsear string 'MM/DD/YYYY HH:MM' a TIMESTAMP con TO_TIMESTAMP(InvoiceDate, 'MM/DD/YYYY HH24:MI')."
+raw_ecommerce,InvoiceDate,dim_fecha,fecha,DATE,Extraer parte DATE del TIMESTAMP: fecha_completa::DATE.
+raw_ecommerce,InvoiceDate,dim_fecha,anio,SMALLINT,"Extraer año: EXTRACT(YEAR FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,trimestre,SMALLINT,"Calcular trimestre: EXTRACT(QUARTER FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,mes,SMALLINT,"Extraer mes: EXTRACT(MONTH FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,nombre_mes,VARCHAR(20),"Convertir número de mes a nombre: TO_CHAR(fecha_completa, 'TMMonth') en español o lookup table."
+raw_ecommerce,InvoiceDate,dim_fecha,semana_del_anio,SMALLINT,"Calcular semana ISO: EXTRACT(WEEK FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,dia,SMALLINT,"Extraer día del mes: EXTRACT(DAY FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,nombre_dia_semana,VARCHAR(20),"Nombre del día de la semana: TO_CHAR(fecha_completa, 'TMDay')."
+raw_ecommerce,InvoiceDate,dim_fecha,numero_dia_semana,SMALLINT,"Número del día 1=Lunes…7=Domingo: EXTRACT(ISODOW FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,hora,SMALLINT,"Extraer hora: EXTRACT(HOUR FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,minuto,SMALLINT,"Extraer minuto: EXTRACT(MINUTE FROM fecha_completa)."
+raw_ecommerce,InvoiceDate,dim_fecha,es_fin_de_semana,BOOLEAN,"TRUE si numero_dia_semana IN (6, 7)."
+,,,,,
+raw_ecommerce,StockCode,dim_producto,id_producto_sk,SERIAL (INT),Clave subrogada autogenerada por secuencia.
+raw_ecommerce,StockCode,dim_producto,codigo_producto_origen,VARCHAR(20),"TRIM(UPPER(StockCode)). Preservar valor original limpio."
+raw_ecommerce,Description,dim_producto,descripcion_producto,VARCHAR(255),"TRIM(UPPER(REGEXP_REPLACE(Description, '\s+', ' ', 'g'))). Si nulo: reemplazar con 'SIN DESCRIPCIÓN'. Si código especial: descripción del tipo (ej. 'GASTOS DE ENVÍO')."
+raw_ecommerce,StockCode,dim_producto,es_codigo_especial,BOOLEAN,"TRUE si StockCode IN ('POST', 'DOT', 'M', 'D', 'BANK CHARGES', 'AMAZONFEE', 'CRUK', 'C2', 'PADS', 'S'). FALSE en cualquier otro caso."
+,,,,,
+raw_ecommerce,CustomerID,dim_cliente,id_cliente_sk,INTEGER (PK),"Clave subrogada. Si CustomerID es NULL → asignar -1 (registro fantasma 'Cliente Anónimo')."
+raw_ecommerce,CustomerID,dim_cliente,codigo_cliente_origen,VARCHAR(10),"Convertir float a entero a string: CAST(CustomerID::INTEGER AS VARCHAR). Si NULL → 'ANÓNIMO'."
+raw_ecommerce,CustomerID,dim_cliente,es_cliente_anonimo,BOOLEAN,"TRUE si CustomerID IS NULL en origen. FALSE en caso contrario."
+,,,,,
+raw_ecommerce,Country,dim_geografia,id_geografia_sk,SERIAL (INT),Clave subrogada autogenerada por secuencia.
+raw_ecommerce,Country,dim_geografia,pais,VARCHAR(100),"TRIM(INITCAP(Country)). Normalizar capitalización."
+raw_ecommerce,(calculado),dim_geografia,region,VARCHAR(100),"Asignar mediante lookup table de países a regiones: 'Europa', 'América del Norte', 'Asia', etc. Valor por defecto: 'Sin Clasificar'."
+,,,,,
+raw_ecommerce,InvoiceNo,dim_factura,id_factura_sk,SERIAL (INT),Clave subrogada autogenerada por secuencia.
+raw_ecommerce,InvoiceNo,dim_factura,numero_factura_origen,VARCHAR(20),"TRIM(InvoiceNo). Preservar el valor original incluyendo prefijo 'C' si aplica."
+raw_ecommerce,InvoiceNo,dim_factura,es_cancelacion,BOOLEAN,"TRUE si LEFT(TRIM(InvoiceNo), 1) = 'C'. FALSE en cualquier otro caso."
+,,,,,
+raw_ecommerce,(secuencia),fact_ventas,id_venta_sk,BIGSERIAL (INT),Clave subrogada autogenerada. No existe campo equivalente en el origen.
+raw_ecommerce,InvoiceDate,fact_ventas,id_fecha_sk,INTEGER FK,"Resolver clave subrogada: buscar en dim_fecha por fecha_completa = TO_TIMESTAMP(InvoiceDate, 'MM/DD/YYYY HH24:MI')."
+raw_ecommerce,StockCode,fact_ventas,id_producto_sk,INTEGER FK,Resolver clave subrogada: buscar en dim_producto por codigo_producto_origen = TRIM(UPPER(StockCode)).
+raw_ecommerce,CustomerID,fact_ventas,id_cliente_sk,INTEGER FK,"Resolver clave subrogada: buscar en dim_cliente por codigo_cliente_origen. Si CustomerID IS NULL → usar -1."
+raw_ecommerce,Country,fact_ventas,id_geografia_sk,INTEGER FK,Resolver clave subrogada: buscar en dim_geografia por pais = TRIM(INITCAP(Country)).
+raw_ecommerce,InvoiceNo,fact_ventas,id_factura_sk,INTEGER FK,Resolver clave subrogada: buscar en dim_factura por numero_factura_origen = TRIM(InvoiceNo).
+raw_ecommerce,Quantity,fact_ventas,cantidad,INTEGER,"CAST(Quantity AS INTEGER). Conservar valor negativo para indicar devolución."
+raw_ecommerce,UnitPrice,fact_ventas,precio_unitario,NUMERIC(10.2),"ROUND(UnitPrice::NUMERIC, 2). Si UnitPrice < 0 → registrar en log de auditoría. Si UnitPrice = 0 → marcar como muestra/ajuste."
+raw_ecommerce,(calculado),fact_ventas,monto_total,NUMERIC(12.2),"Calcular en ETL: Quantity * UnitPrice. No almacenar desde origen."
+raw_ecommerce,InvoiceNo,fact_ventas,es_devolucion,BOOLEAN,"Desnormalización: TRUE si LEFT(TRIM(InvoiceNo), 1) = 'C'."
